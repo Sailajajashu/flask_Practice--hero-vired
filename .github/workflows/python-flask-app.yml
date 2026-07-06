@@ -1,0 +1,108 @@
+name: Flask CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - staging
+
+  release:
+    types:
+      - published
+
+jobs:
+
+  build-test:
+
+    runs-on: self-hosted
+
+    steps:
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        run: |
+          python3 --version
+
+      - name: Create Virtual Environment
+        run: |
+          python3 -m venv venv
+
+      - name: Install Dependencies
+        run: |
+          source venv/bin/activate
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Run Tests
+        run: |
+          source venv/bin/activate
+          pytest
+
+      - name: Build
+        run: |
+          echo "Build Successful"
+
+  deploy-staging:
+
+    needs: build-test
+
+    if: github.ref == 'refs/heads/staging'
+
+    runs-on: self-hosted
+
+    steps:
+
+      - name: Configure Environment
+        run: |
+          echo "MONGO_URI=${{ secrets.MONGO_URI }}" > .env
+          echo "SECRET_KEY=${{ secrets.SECRET_KEY }}" >> .env
+
+      - name: Stop Existing Application
+        run: |
+          pkill -f "python app.py" || true
+
+      - name: Deploy Flask App
+        run: |
+          source venv/bin/activate
+          nohup python app.py > output.log 2>&1 < /dev/null &
+          sleep 5
+
+      - name: Verify Deployment
+        run: |
+          ps -ef | grep app.py || true
+          ss -tulnp | grep 5000 || true
+          cat output.log
+
+  deploy-production:
+
+    needs: build-test
+
+    if: startsWith(github.ref, 'refs/tags/')
+
+    runs-on: self-hosted
+
+    steps:
+
+      - name: Configure Environment
+        run: |
+          echo "MONGO_URI=${{ secrets.MONGO_URI }}" > .env
+          echo "SECRET_KEY=${{ secrets.SECRET_KEY }}" >> .env
+
+      - name: Stop Existing Application
+        run: |
+          pkill -f "python app.py" || true
+
+      - name: Deploy Flask App
+        run: |
+          source venv/bin/activate
+          nohup python app.py > output.log 2>&1 < /dev/null &
+          sleep 5
+
+      - name: Verify Deployment
+        run: |
+          ps -ef | grep app.py || true
+          ss -tulnp | grep 5000 || true
+          cat output.log
